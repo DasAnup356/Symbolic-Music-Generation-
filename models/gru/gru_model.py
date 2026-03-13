@@ -29,7 +29,7 @@ class GRUMusicGenerator:
             layers.Embedding(
                 input_dim=self.vocab_size,
                 output_dim=self.embedding_dim,
-                input_length=self.seq_length
+
             ),
 
             # First GRU layer - 512 units
@@ -79,7 +79,7 @@ class GRUMusicGenerator:
         optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
         self.model.compile(
             optimizer=optimizer,
-            loss='categorical_crossentropy',
+            loss='sparse_categorical_crossentropy',
             metrics=['accuracy']
         )
 

@@ -29,7 +29,7 @@ class LSTMMusicGenerator:
             layers.Embedding(
                 input_dim=self.vocab_size,
                 output_dim=self.embedding_dim,
-                input_length=self.seq_length
+
             ),
 
             # First LSTM layer - 512 units
@@ -79,7 +79,7 @@ class LSTMMusicGenerator:
         optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
         self.model.compile(
             optimizer=optimizer,
-            loss='categorical_crossentropy',
+            loss='sparse_categorical_crossentropy',
             metrics=['accuracy']
         )
 
@@ -158,7 +158,7 @@ class LSTMMusicGenerator:
 def create_callbacks(checkpoint_path, log_dir):
     """Create training callbacks."""
     callbacks = [
-        # Model checkpoint
+
         keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_path,
             monitor='val_accuracy',
@@ -166,7 +166,7 @@ def create_callbacks(checkpoint_path, log_dir):
             verbose=1
         ),
 
-        # Early stopping
+
         keras.callbacks.EarlyStopping(
             monitor='val_loss',
             patience=15,
@@ -174,7 +174,7 @@ def create_callbacks(checkpoint_path, log_dir):
             verbose=1
         ),
 
-        # Learning rate reduction
+
         keras.callbacks.ReduceLROnPlateau(
             monitor='val_loss',
             factor=0.5,
@@ -182,12 +182,5 @@ def create_callbacks(checkpoint_path, log_dir):
             min_lr=1e-5,
             verbose=1
         ),
-
-        # TensorBoard
-        keras.callbacks.TensorBoard(
-            log_dir=log_dir,
-            histogram_freq=1
-        )
-    ]
-
+        ]
     return callbacks
