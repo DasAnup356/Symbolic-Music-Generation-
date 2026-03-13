@@ -1,0 +1,188 @@
+# Symbolic Music Generation Project Configuration
+
+# Project Metadata
+project_name: "Symbolic Music Generation Using Deep Generative Models"
+version: "1.0.0"
+author: "Your Name"
+description: "End-to-end pipeline for symbolic music generation using LSTM/GRU, CNNs, VAEs, RBM/CRBM, and GANs"
+
+# Data Configuration
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  midi_dir: "data/midi_files"
+  dataset_size: 10000  # Target: 10K MIDI files
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+
+  # MIDI Processing
+  midi_processing:
+    sample_rate: 44100
+    resolution: 480  # ticks per quarter note
+    max_length: 512  # maximum sequence length
+    min_length: 32   # minimum sequence length
+    quantize: true
+    tempo: 120
+
+  # Note representation
+  representation:
+    note_range: [21, 108]  # MIDI note range (A0 to C8)
+    velocity_bins: 32
+    duration_bins: 16
+    time_shift_bins: 100
+
+# Model Architectures
+models:
+  # LSTM Configuration
+  lstm:
+    name: "LSTM_MusicGen"
+    layers: 3
+    units: 512
+    dropout: 0.3
+    recurrent_dropout: 0.2
+    activation: "tanh"
+    return_sequences: true
+    bidirectional: false
+
+  # GRU Configuration
+  gru:
+    name: "GRU_MusicGen"
+    layers: 3
+    units: 512
+    dropout: 0.3
+    recurrent_dropout: 0.2
+    activation: "tanh"
+    return_sequences: true
+
+  # CNN Configuration
+  cnn:
+    name: "CNN_MusicGen"
+    conv_layers: 4
+    filters: [64, 128, 256, 512]
+    kernel_sizes: [3, 3, 3, 3]
+    pool_sizes: [2, 2, 2, 2]
+    dropout: 0.3
+
+  # VAE Configuration
+  vae:
+    name: "VAE_MusicGen"
+    latent_dim: 256
+    encoder_layers: [512, 256]
+    decoder_layers: [256, 512]
+    beta: 1.0  # KL divergence weight
+
+  # RBM/CRBM Configuration
+  rbm:
+    name: "RBM_MusicGen"
+    n_hidden: 512
+    learning_rate: 0.01
+    n_epochs: 100
+    batch_size: 32
+    k: 1  # CD-k steps
+
+  crbm:
+    name: "CRBM_MusicGen"
+    n_hidden: 512
+    n_visible_temporal: 100
+    learning_rate: 0.01
+
+  # GAN Configuration
+  gan:
+    name: "GAN_MusicGen"
+    generator:
+      latent_dim: 100
+      layers: [256, 512, 1024]
+      activation: "relu"
+      output_activation: "tanh"
+    discriminator:
+      layers: [512, 256, 128]
+      activation: "leaky_relu"
+      dropout: 0.3
+
+# Training Configuration
+training:
+  batch_size: 64
+  epochs: 100
+  learning_rate: 0.001
+  optimizer: "adam"
+  loss_function: "categorical_crossentropy"
+
+  # Early stopping
+  early_stopping:
+    monitor: "val_loss"
+    patience: 15
+    restore_best_weights: true
+
+  # Learning rate scheduler
+  lr_scheduler:
+    factor: 0.5
+    patience: 5
+    min_lr: 0.00001
+
+  # Checkpointing
+  checkpoint:
+    save_best_only: true
+    save_freq: "epoch"
+    monitor: "val_accuracy"
+
+  # Target metrics
+  target_metrics:
+    validation_accuracy: 0.80  # 80% validation accuracy target
+
+# Generation Configuration
+generation:
+  temperature: 1.0
+  top_k: 50
+  top_p: 0.9
+  num_samples: 500  # Target: 500+ MIDI files
+  sequence_length: 256
+  seed_length: 32
+
+  # Output format
+  output:
+    format: "midi"
+    tempo: 120
+    velocity: 80
+    instrument: 0  # Acoustic Grand Piano
+
+# Evaluation Metrics
+evaluation:
+  metrics:
+    - "note_density"
+    - "pitch_range"
+    - "pitch_class_entropy"
+    - "scale_consistency"
+    - "rhythmic_complexity"
+    - "polyphonic_ratio"
+    - "note_length_distribution"
+
+  # Quality thresholds
+  quality_thresholds:
+    min_note_density: 0.1
+    max_note_density: 0.9
+    min_pitch_range: 12
+    min_entropy: 2.0
+
+# Computational Resources
+compute:
+  device: "cuda"  # cuda, cpu, or mps
+  mixed_precision: true
+  num_workers: 4
+  prefetch_factor: 2
+
+# Logging
+logging:
+  level: "INFO"
+  log_dir: "outputs/logs"
+  tensorboard: true
+  wandb: false
+  save_frequency: 10
+
+# Paths
+paths:
+  models: "models/"
+  outputs: "outputs/"
+  checkpoints: "outputs/checkpoints/"
+  generated_midi: "outputs/generated_midi/"
+  logs: "outputs/logs/"
