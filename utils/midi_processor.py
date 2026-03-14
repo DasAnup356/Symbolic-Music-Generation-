@@ -185,7 +185,10 @@ class MIDIProcessor:
             sequence = self.midi_to_sequence(str(midi_file))
             if sequence is not None:
                 # Create training sequences
-                train_seqs = self.create_training_sequences(sequence)
+                train_seqs = self.create_training_sequences(
+                    sequence,
+                    seq_length=self.max_length
+                )
                 all_sequences.extend(train_seqs)
                 successful += 1
 
@@ -230,25 +233,31 @@ def prepare_training_data(sequences, vocab_size, seq_length=128):
     y = []
 
     for seq in sequences:
-        notes = seq['notes']
-        if len(notes) >= seq_length + 1:
-            X.append(notes[:seq_length])
-            y.append(notes[seq_length])
+        notes = np.asarray(seq['notes'], dtype=np.int32)
+        if len(notes) < 2:
+            continue
 
-    X = np.array(X)
-    y = np.array(y)
+        current_seq_len = min(seq_length, len(notes) - 1)
+        input_notes = notes[:current_seq_len]
+        target_note = notes[current_seq_len]
 
-    # Convert to one-hot encoding
-    X_onehot = np.zeros((len(X), seq_length, vocab_size))
-    y_onehot = np.zeros((len(y), vocab_size))
+        if input_notes.shape[0] < seq_length:
+            padded = np.zeros(seq_length, dtype=np.int32)
+            padded[-input_notes.shape[0]:] = input_notes
+            input_notes = padded
 
-    for i, seq in enumerate(X):
-        for j, note in enumerate(seq):
-            if 0 <= note < vocab_size:
-                X_onehot[i, j, int(note)] = 1
+        if 0 <= target_note < vocab_size:
+            X.append(input_notes)
+            y.append(int(target_note))
 
-    for i, note in enumerate(y):
-        if 0 <= note < vocab_size:
-            y_onehot[i, int(note)] = 1
+    if not X:
+        raise ValueError(
+            "No training samples could be created from the processed sequences. "
+            "Try reducing `data.midi_processing.max_length` in config.yaml or "
+            "regenerate processed data."
+        )
 
-    return X_onehot, y_onehot
+    X = np.asarray(X, dtype=np.int32)
+    y = np.asarray(y, dtype=np.int32)
+
+    return X, y
