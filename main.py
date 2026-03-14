@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import time
+import tensorflow as tf
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -12,6 +13,23 @@ from preprocessing.preprocess import preprocess_dataset
 from train import train_lstm
 from generation.generate import generate_music
 from evaluation.evaluate import evaluate_generated_music
+
+
+def resolve_pipeline_runtime(config):
+    """Resolve lightweight defaults for CPU-only execution."""
+    has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+    cpu_cfg = config.get('training', 'cpu_optimized', default={})
+
+    preprocess_files = config.get('data', 'dataset_size')
+    num_samples = config.get('generation', 'num_samples')
+
+    if (not has_gpu) and cpu_cfg.get('enabled', True):
+        preprocess_files = min(preprocess_files, cpu_cfg.get('max_files', 200))
+        num_samples = min(num_samples, cpu_cfg.get('generation_samples', 50))
+        print(f"CPU-only environment detected. Using lighter pipeline settings: max_files={preprocess_files}, generation_samples={num_samples}")
+
+    return preprocess_files, num_samples
+
 
 def run_pipeline(config, steps=['all']):
     """
@@ -27,6 +45,7 @@ def run_pipeline(config, steps=['all']):
     print("="*80)
 
     start_time = time.time()
+    preprocess_max_files, generation_samples = resolve_pipeline_runtime(config)
 
     # Step 1: Preprocessing
     if 'all' in steps or 'preprocess' in steps:
@@ -35,7 +54,7 @@ def run_pipeline(config, steps=['all']):
 
         sequences = preprocess_dataset(
             config=config,
-            max_files=100  # Start with 100 files for testing
+            max_files=preprocess_max_files
         )
 
         print(f"Preprocessed {len(sequences)} training sequences")
@@ -97,7 +116,7 @@ def run_pipeline(config, steps=['all']):
             config=config,
             model_type='lstm',
             model_path=model_path,
-            num_samples=50  # Generate 50 samples for testing
+            num_samples=generation_samples
         )
 
         print(f"Generated {len(sequences)} MIDI files")

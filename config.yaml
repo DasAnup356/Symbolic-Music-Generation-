@@ -39,8 +39,10 @@ models:
     name: "LSTM_MusicGen"
     layers: 3
     units: 512
+    embedding_dim: 256
     dropout: 0.3
     recurrent_dropout: 0.2
+    dense_units: [512, 256]
     activation: "tanh"
     return_sequences: true
     bidirectional: false
@@ -50,6 +52,7 @@ models:
     name: "GRU_MusicGen"
     layers: 3
     units: 512
+    embedding_dim: 256
     dropout: 0.3
     recurrent_dropout: 0.2
     activation: "tanh"
@@ -129,6 +132,20 @@ training:
   # Target metrics
   target_metrics:
     validation_accuracy: 0.80  # 80% validation accuracy target
+
+  # CPU-friendly fallback profile (used automatically when no GPU is detected)
+  cpu_optimized:
+    enabled: true
+    max_files: 200
+    epochs: 12
+    batch_size: 32
+    layers: 2
+    units: 192
+    embedding_dim: 96
+    dropout: 0.2
+    recurrent_dropout: 0.0
+    dense_units: [192, 96]
+    generation_samples: 50
 
 # Generation Configuration
 generation:
