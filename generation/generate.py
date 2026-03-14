@@ -39,12 +39,20 @@ def load_model(model_type, model_path, vocab_size, seq_length):
     return model
 
 def generate_from_lstm_gru(model, seed_sequence, num_samples, length, temperature):
-    """Generate sequences from LSTM/GRU model."""
-    generated_sequences = []
-
+    """Generate sequences from LSTM/GRU model (batched when supported)."""
     print(f"Generating {num_samples} sequences...")
-    for i in tqdm(range(num_samples)):
-        # Generate sequence
+
+    if hasattr(model, 'generate_sequences'):
+        seed_batch = np.tile(seed_sequence, (num_samples, 1))
+        generated = model.generate_sequences(
+            seed_sequences=seed_batch,
+            length=length,
+            temperature=temperature
+        )
+        return [generated[i] for i in range(generated.shape[0])]
+
+    generated_sequences = []
+    for _ in tqdm(range(num_samples)):
         sequence = model.generate_sequence(
             seed_sequence=seed_sequence,
             length=length,
@@ -134,7 +142,7 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
         data = pickle.load(f)
 
     vocab_size = data['config']['vocab_size']
-    seq_length = config.get('data', 'midi_processing', 'max_length')
+    seq_length = config.get('generation', 'seed_length')
 
     print(f"Vocabulary size: {vocab_size}")
     print(f"Sequence length: {seq_length}")

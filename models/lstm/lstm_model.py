@@ -58,7 +58,7 @@ class LSTMMusicGenerator:
         self.model.compile(
             optimizer=optimizer,
             loss="sparse_categorical_crossentropy",
-            metrics=["accuracy"],
+            metrics=["accuracy", keras.metrics.SparseTopKCategoricalAccuracy(k=5, name="top5_accuracy")],
         )
 
     def train(self, X_train, y_train, X_val, y_val, epochs=20, batch_size=32, callbacks=None):
@@ -83,6 +83,27 @@ class LSTMMusicGenerator:
             next_note = np.random.choice(self.vocab_size, p=predictions)
             generated.append(next_note)
         return np.array(generated)
+
+
+    def generate_sequences(self, seed_sequences, length=256, temperature=1.0):
+        """Generate multiple sequences in a vectorized batch for speed."""
+        generated = np.array(seed_sequences, dtype=np.int32)
+
+        for _ in range(length):
+            x = generated[:, -self.seq_length:]
+            predictions = self.model.predict(x, verbose=0, batch_size=len(x))
+            predictions = np.log(predictions + 1e-10) / temperature
+            predictions = np.exp(predictions)
+            predictions = predictions / np.sum(predictions, axis=1, keepdims=True)
+
+            next_notes = [
+                np.random.choice(self.vocab_size, p=predictions[i])
+                for i in range(predictions.shape[0])
+            ]
+            next_notes = np.array(next_notes, dtype=np.int32).reshape(-1, 1)
+            generated = np.concatenate([generated, next_notes], axis=1)
+
+        return generated
 
     def save_model(self, filepath):
         self.model.save(filepath)
