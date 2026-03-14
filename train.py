@@ -172,9 +172,11 @@ def train_lstm(config, data):
         callbacks=callbacks,
     )
 
-    test_loss, test_acc = model.model.evaluate(X_test, y_test, verbose=0)
-    print(f"\nTest Accuracy: {test_acc:.4f}")
-    print(f"Test Loss: {test_loss:.4f}")
+    test_metrics = model.model.evaluate(X_test, y_test, verbose=0, return_dict=True)
+    print(f"\nTest Accuracy: {test_metrics.get('accuracy', 0.0):.4f}")
+    if 'top5_accuracy' in test_metrics:
+        print(f"Test Top-5 Accuracy: {test_metrics['top5_accuracy']:.4f}")
+    print(f"Test Loss: {test_metrics.get('loss', 0.0):.4f}")
 
     final_path = os.path.join(config['paths']['models'], 'lstm', 'lstm_final.h5')
     model.save_model(final_path)
@@ -220,8 +222,10 @@ def train_gru(config, data):
         callbacks=callbacks,
     )
 
-    test_loss, test_acc = model.model.evaluate(X_test, y_test, verbose=0)
-    print(f"\nTest Accuracy: {test_acc:.4f}")
+    test_metrics = model.model.evaluate(X_test, y_test, verbose=0, return_dict=True)
+    print(f"\nTest Accuracy: {test_metrics.get('accuracy', 0.0):.4f}")
+    if 'top5_accuracy' in test_metrics:
+        print(f"Test Top-5 Accuracy: {test_metrics['top5_accuracy']:.4f}")
 
     final_path = os.path.join(config['paths']['models'], 'gru', 'gru_final.h5')
     model.save_model(final_path)

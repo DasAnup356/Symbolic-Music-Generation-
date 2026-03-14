@@ -164,20 +164,6 @@ training:
     train_seq_length: 128
     recurrent_dropout: 0.0
 
-  # CPU-friendly fallback profile (used automatically when no GPU is detected)
-  cpu_optimized:
-    enabled: true
-    max_files: 200
-    epochs: 12
-    batch_size: 32
-    layers: 2
-    units: 192
-    embedding_dim: 96
-    dropout: 0.2
-    recurrent_dropout: 0.0
-    dense_units: [192, 96]
-    generation_samples: 50
-
 # Generation Configuration
 generation:
   temperature: 1.0
