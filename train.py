@@ -7,6 +7,7 @@ import numpy as np
 import pickle
 from pathlib import Path
 import argparse
+import tensorflow as tf
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +19,39 @@ from models.gru.gru_model import GRUMusicGenerator
 from models.vae.vae_model import VAEMusicGenerator
 from models.rbm.rbm_model import RBMMusicGenerator
 from models.gan.gan_model import GANMusicGenerator
+
+
+def resolve_runtime_profile(config):
+    """Resolve CPU/GPU-aware runtime overrides for faster training."""
+    has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+    profile = {
+        'has_gpu': has_gpu,
+        'embedding_dim': 128,
+        'num_layers': 2,
+        'units': 256,
+        'dropout': 0.2,
+        'recurrent_dropout': 0.0,
+        'dense_units': (256, 128),
+        'batch_size': config['training']['batch_size'],
+        'epochs': config['training']['epochs'],
+    }
+
+    if not has_gpu:
+        cpu = config.get('training', 'cpu_optimized', default={})
+        if cpu.get('enabled', True):
+            profile.update({
+                'embedding_dim': cpu.get('embedding_dim', 96),
+                'num_layers': cpu.get('layers', 2),
+                'units': cpu.get('units', 192),
+                'dropout': cpu.get('dropout', 0.2),
+                'recurrent_dropout': cpu.get('recurrent_dropout', 0.0),
+                'dense_units': tuple(cpu.get('dense_units', [192, 96])),
+                'batch_size': cpu.get('batch_size', 32),
+                'epochs': cpu.get('epochs', 20),
+            })
+
+    return profile
+
 
 def load_data(data_path, config):
     """Load and prepare training data."""
@@ -66,10 +100,32 @@ def train_lstm(config, data):
 
     # Create model
     lstm_config = config['models']['lstm']
+    runtime = resolve_runtime_profile(config)
+
+    if runtime['has_gpu']:
+        model_kwargs = {
+            'embedding_dim': lstm_config.get('embedding_dim', runtime['embedding_dim']),
+            'num_layers': lstm_config.get('layers', runtime['num_layers']),
+            'units': lstm_config.get('units', runtime['units']),
+            'dropout': lstm_config.get('dropout', runtime['dropout']),
+            'recurrent_dropout': lstm_config.get('recurrent_dropout', runtime['recurrent_dropout']),
+            'dense_units': tuple(lstm_config.get('dense_units', runtime['dense_units'])),
+        }
+    else:
+        model_kwargs = {
+            'embedding_dim': runtime['embedding_dim'],
+            'num_layers': runtime['num_layers'],
+            'units': runtime['units'],
+            'dropout': runtime['dropout'],
+            'recurrent_dropout': runtime['recurrent_dropout'],
+            'dense_units': runtime['dense_units'],
+        }
+        print("Running CPU-optimized training profile for feasibility.")
+
     model = LSTMMusicGenerator(
         vocab_size=vocab_size,
         seq_length=X_train.shape[1],
-        embedding_dim=256
+        **model_kwargs,
     )
 
     print("\nModel Architecture:")
@@ -87,8 +143,8 @@ def train_lstm(config, data):
     history = model.train(
         X_train, y_train,
         X_val, y_val,
-        epochs=config['training']['epochs'],
-        batch_size=config['training']['batch_size'],
+        epochs=runtime['epochs'],
+        batch_size=runtime['batch_size'],
         callbacks=callbacks
     )
 
@@ -111,10 +167,33 @@ def train_gru(config, data):
 
     (X_train, y_train), (X_val, y_val), (X_test, y_test), vocab_size = data
 
+    gru_config = config['models']['gru']
+    runtime = resolve_runtime_profile(config)
+
+    if runtime['has_gpu']:
+        model_kwargs = {
+            'embedding_dim': gru_config.get('embedding_dim', runtime['embedding_dim']),
+            'num_layers': gru_config.get('layers', runtime['num_layers']),
+            'units': gru_config.get('units', runtime['units']),
+            'dropout': gru_config.get('dropout', runtime['dropout']),
+            'recurrent_dropout': gru_config.get('recurrent_dropout', runtime['recurrent_dropout']),
+            'dense_units': tuple(gru_config.get('dense_units', runtime['dense_units'])),
+        }
+    else:
+        model_kwargs = {
+            'embedding_dim': runtime['embedding_dim'],
+            'num_layers': runtime['num_layers'],
+            'units': runtime['units'],
+            'dropout': runtime['dropout'],
+            'recurrent_dropout': runtime['recurrent_dropout'],
+            'dense_units': runtime['dense_units'],
+        }
+        print("Running CPU-optimized training profile for feasibility.")
+
     model = GRUMusicGenerator(
         vocab_size=vocab_size,
         seq_length=X_train.shape[1],
-        embedding_dim=256
+        **model_kwargs,
     )
 
     print("\nModel Architecture:")
@@ -129,8 +208,8 @@ def train_gru(config, data):
     history = model.train(
         X_train, y_train,
         X_val, y_val,
-        epochs=config['training']['epochs'],
-        batch_size=config['training']['batch_size'],
+        epochs=runtime['epochs'],
+        batch_size=runtime['batch_size'],
         callbacks=callbacks
     )
 
