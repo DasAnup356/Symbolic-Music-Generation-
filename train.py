@@ -70,6 +70,10 @@ def resolve_runtime_profile(config):
         gpu = config.get('training', 'gpu_optimized', default={})
         if gpu.get('enabled', True):
             profile.update({
+                'embedding_dim': gpu.get('embedding_dim', profile['embedding_dim']),
+                'num_layers': gpu.get('layers', profile['num_layers']),
+                'units': gpu.get('units', profile['units']),
+                'dense_units': tuple(gpu.get('dense_units', profile['dense_units'])),
                 'batch_size': gpu.get('batch_size', profile['batch_size']),
                 'epochs': gpu.get('epochs', profile['epochs']),
                 'train_seq_length': gpu.get('train_seq_length', profile['train_seq_length']),
@@ -78,6 +82,10 @@ def resolve_runtime_profile(config):
         tpu = config.get('training', 'tpu_optimized', default={})
         if tpu.get('enabled', True):
             profile.update({
+                'embedding_dim': tpu.get('embedding_dim', profile['embedding_dim']),
+                'num_layers': tpu.get('layers', profile['num_layers']),
+                'units': tpu.get('units', profile['units']),
+                'dense_units': tuple(tpu.get('dense_units', profile['dense_units'])),
                 'batch_size': tpu.get('batch_size', 128),
                 'epochs': tpu.get('epochs', profile['epochs']),
                 'train_seq_length': tpu.get('train_seq_length', 128),
@@ -150,6 +158,10 @@ def train_lstm(config, data):
     print(f"Detected accelerator: {runtime['device'].upper()}")
     if runtime['device'] == 'cpu':
         print("Running CPU-optimized training profile for feasibility.")
+    print(
+        f"Model capacity: layers={runtime['num_layers']}, units={runtime['units']}, "
+        f"embedding={runtime['embedding_dim']}, dense={list(runtime['dense_units'])}"
+    )
 
     with runtime['strategy'].scope():
         model = LSTMMusicGenerator(vocab_size=vocab_size, seq_length=X_train.shape[1], **model_kwargs)

@@ -46,7 +46,8 @@ def pick_seed_sequences(processed_data, seq_length, num_samples, vocab_size):
     if sequences:
         seeds = []
         for _ in range(num_samples):
-            seq = sequences[np.random.randint(0, len(sequences))]['notes']
+            seq_dict = sequences[np.random.randint(0, len(sequences))]
+            seq = seq_dict.get('tokens', seq_dict['notes'])
             seq = np.asarray(seq, dtype=np.int32)
             if len(seq) >= seq_length:
                 start = np.random.randint(0, len(seq) - seq_length + 1)
@@ -127,24 +128,39 @@ def generate_from_gan(model, num_samples, length):
 
 
 def save_sequences_as_midi(sequences, output_dir, processor, config):
-    """Save generated sequences as MIDI files."""
+    """Save generated sequences as MIDI files with decoded note+instrument tokens."""
     print(f"\nSaving {len(sequences)} MIDI files to {output_dir}...")
 
     os.makedirs(output_dir, exist_ok=True)
 
     tempo = config.get('generation', 'output', 'tempo')
-    velocity = config.get('generation', 'output', 'velocity')
+    default_velocity = config.get('generation', 'output', 'velocity')
+
+    duration_choices = np.array([processor.resolution // 2, processor.resolution, processor.resolution * 2], dtype=np.int32)
+    duration_probs = np.array([0.25, 0.55, 0.20], dtype=np.float64)
 
     for i, sequence in enumerate(tqdm(sequences)):
+        notes = []
+        instruments = []
+        for token in sequence:
+            note_idx, program = processor.decode_token(token)
+            notes.append(note_idx)
+            instruments.append(program)
+
+        durations = np.random.choice(duration_choices, size=len(notes), p=duration_probs)
+        velocities = np.random.randint(max(45, default_velocity - 20), min(127, default_velocity + 20), size=len(notes))
+        time_shifts = np.cumsum(np.maximum(1, durations))
+
         seq_data = {
-            'notes': sequence,
-            'durations': np.full(len(sequence), processor.resolution),
-            'velocities': np.full(len(sequence), velocity),
-            'time_shifts': np.arange(len(sequence)) * processor.resolution
+            'notes': np.asarray(notes, dtype=np.int32),
+            'durations': np.asarray(durations, dtype=np.int32),
+            'velocities': np.asarray(velocities, dtype=np.int32),
+            'time_shifts': np.asarray(time_shifts, dtype=np.int32),
+            'instruments': np.asarray(instruments, dtype=np.int32),
         }
 
         output_path = os.path.join(output_dir, f"generated_{i:04d}.mid")
-        processor.sequence_to_midi(seq_data, output_path, tempo=tempo, velocity=velocity)
+        processor.sequence_to_midi(seq_data, output_path, tempo=tempo, velocity=default_velocity)
 
     print(f"✓ Saved {len(sequences)} MIDI files")
 
@@ -194,7 +210,8 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
 
     processor = MIDIProcessor(
         note_range=tuple(config.get('data', 'representation', 'note_range')),
-        resolution=config.get('data', 'midi_processing', 'resolution')
+        resolution=config.get('data', 'midi_processing', 'resolution'),
+        instrument_bins=config.get('data', 'representation', 'instrument_bins', default=16),
     )
 
     if output_dir is None:

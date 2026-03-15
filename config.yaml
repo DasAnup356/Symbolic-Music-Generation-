@@ -31,6 +31,7 @@ data:
     velocity_bins: 32
     duration_bins: 16
     time_shift_bins: 100
+    instrument_bins: 16
 
 # Model Architectures
 models:
@@ -137,31 +138,39 @@ training:
   # CPU-friendly fallback profile (used automatically when no accelerator is detected)
   cpu_optimized:
     enabled: true
-    max_files: 100
-    epochs: 8
+    max_files: 200
+    epochs: 20
     batch_size: 64
-    layers: 2
-    units: 192
-    embedding_dim: 128
+    layers: 3
+    units: 384
+    embedding_dim: 256
     dropout: 0.2
     recurrent_dropout: 0.0
-    dense_units: [192, 96]
-    train_seq_length: 96
-    generation_samples: 12
+    dense_units: [512, 256]
+    train_seq_length: 128
+    generation_samples: 16
 
   # GPU profile (used automatically when CUDA GPU is available)
   gpu_optimized:
     enabled: true
-    epochs: 30
+    epochs: 50
     batch_size: 128
     train_seq_length: 256
+    layers: 4
+    units: 512
+    embedding_dim: 320
+    dense_units: [768, 384]
 
   # TPU profile (used automatically when TPU runtime is available)
   tpu_optimized:
     enabled: true
-    epochs: 24
+    epochs: 40
     batch_size: 128
-    train_seq_length: 128
+    train_seq_length: 192
+    layers: 4
+    units: 512
+    embedding_dim: 320
+    dense_units: [768, 384]
     recurrent_dropout: 0.0
 
 # Generation Configuration
