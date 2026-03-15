@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import time
+import tensorflow as tf
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
