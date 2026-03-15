@@ -3,6 +3,7 @@
 import os
 import sys
 import argparse
+import inspect
 import numpy as np
 import pickle
 from tqdm import tqdm
@@ -65,26 +66,30 @@ def generate_from_lstm_gru(model, seed_sequences, length, temperature, top_k, to
     print(f"Generating {num_samples} sequences...")
 
     if hasattr(model, 'generate_sequences'):
-        generated = model.generate_sequences(
-            seed_sequences=seed_sequences,
-            length=length,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-        )
+        sig = inspect.signature(model.generate_sequences)
+        kwargs = {'seed_sequences': seed_sequences, 'length': length, 'temperature': temperature}
+        if 'top_k' in sig.parameters:
+            kwargs['top_k'] = top_k
+        if 'top_p' in sig.parameters:
+            kwargs['top_p'] = top_p
+        if 'repetition_penalty' in sig.parameters:
+            kwargs['repetition_penalty'] = repetition_penalty
+
+        generated = model.generate_sequences(**kwargs)
         return [generated[i] for i in range(generated.shape[0])]
 
     generated_sequences = []
     for seed in tqdm(seed_sequences):
-        sequence = model.generate_sequence(
-            seed_sequence=seed,
-            length=length,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-        )
+        sig = inspect.signature(model.generate_sequence)
+        kwargs = {'seed_sequence': seed, 'length': length, 'temperature': temperature}
+        if 'top_k' in sig.parameters:
+            kwargs['top_k'] = top_k
+        if 'top_p' in sig.parameters:
+            kwargs['top_p'] = top_p
+        if 'repetition_penalty' in sig.parameters:
+            kwargs['repetition_penalty'] = repetition_penalty
+
+        sequence = model.generate_sequence(**kwargs)
         generated_sequences.append(sequence)
 
     return generated_sequences

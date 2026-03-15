@@ -137,17 +137,17 @@ training:
   # CPU-friendly fallback profile (used automatically when no accelerator is detected)
   cpu_optimized:
     enabled: true
-    max_files: 120
-    epochs: 6
+    max_files: 100
+    epochs: 8
     batch_size: 64
-    layers: 1
-    units: 96
-    embedding_dim: 64
-    dropout: 0.1
+    layers: 2
+    units: 192
+    embedding_dim: 128
+    dropout: 0.2
     recurrent_dropout: 0.0
-    dense_units: [96]
-    train_seq_length: 64
-    generation_samples: 10
+    dense_units: [192, 96]
+    train_seq_length: 96
+    generation_samples: 12
 
   # GPU profile (used automatically when CUDA GPU is available)
   gpu_optimized:
