@@ -166,9 +166,10 @@ training:
 
 # Generation Configuration
 generation:
-  temperature: 1.0
+  temperature: 0.85
   top_k: 50
   top_p: 0.9
+  repetition_penalty: 1.15
   num_samples: 100  # default generation count (reduced for practical runtime)
   sequence_length: 128
   seed_length: 64

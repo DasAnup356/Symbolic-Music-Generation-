@@ -72,16 +72,77 @@ class GRUMusicGenerator:
         )
         return history
 
-    def generate_sequence(self, seed_sequence, length=256, temperature=1.0):
+    def generate_sequence(self, seed_sequence, length=256, temperature=1.0, top_k=0, top_p=1.0, repetition_penalty=1.0):
         generated = list(seed_sequence)
         for _ in range(length):
             x = np.array(generated[-self.seq_length:]).reshape(1, -1)
             predictions = self.model.predict(x, verbose=0)[0]
-            predictions = np.log(predictions + 1e-10) / temperature
-            predictions = np.exp(predictions) / np.sum(np.exp(predictions))
-            next_note = np.random.choice(self.vocab_size, p=predictions)
+            next_note = self._sample_with_controls(
+                predictions,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+                recent_notes=generated[-8:],
+            )
             generated.append(next_note)
         return np.array(generated)
+
+
+    def generate_sequences(self, seed_sequences, length=256, temperature=1.0, top_k=0, top_p=1.0, repetition_penalty=1.0):
+        """Generate multiple sequences in a vectorized batch for speed."""
+        generated = np.array(seed_sequences, dtype=np.int32)
+
+        for _ in range(length):
+            x = generated[:, -self.seq_length:]
+            predictions = self.model.predict(x, verbose=0, batch_size=len(x))
+            next_notes = [
+                self._sample_with_controls(
+                    predictions[i],
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    recent_notes=generated[i, -8:],
+                )
+                for i in range(predictions.shape[0])
+            ]
+            next_notes = np.array(next_notes, dtype=np.int32).reshape(-1, 1)
+            generated = np.concatenate([generated, next_notes], axis=1)
+
+        return generated
+
+
+    def _sample_with_controls(self, probs, temperature=1.0, top_k=0, top_p=1.0, repetition_penalty=1.0, recent_notes=None):
+        probs = np.asarray(probs, dtype=np.float64)
+        probs = np.log(probs + 1e-10) / max(temperature, 1e-5)
+        probs = np.exp(probs - np.max(probs))
+        probs = probs / np.sum(probs)
+
+        if recent_notes is not None and repetition_penalty > 1.0:
+            for n in recent_notes:
+                probs[int(n)] /= repetition_penalty
+            probs = probs / np.sum(probs)
+
+        if top_k and top_k > 0:
+            top_idx = np.argpartition(probs, -top_k)[-top_k:]
+            mask = np.zeros_like(probs)
+            mask[top_idx] = probs[top_idx]
+            probs = mask / np.sum(mask)
+
+        if top_p < 1.0:
+            sorted_idx = np.argsort(probs)[::-1]
+            sorted_probs = probs[sorted_idx]
+            cumulative = np.cumsum(sorted_probs)
+            cutoff = cumulative > top_p
+            if np.any(cutoff):
+                first_idx = np.argmax(cutoff)
+                sorted_probs[first_idx + 1:] = 0.0
+                mask = np.zeros_like(probs)
+                mask[sorted_idx] = sorted_probs
+                probs = mask / np.sum(mask)
+
+        return np.random.choice(self.vocab_size, p=probs)
 
 
     def generate_sequences(self, seed_sequences, length=256, temperature=1.0):
