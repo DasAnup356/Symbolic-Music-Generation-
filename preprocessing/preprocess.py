@@ -78,7 +78,8 @@ def preprocess_dataset(config, midi_dir=None, output_path=None, max_files=None):
     processor = MIDIProcessor(
         note_range=tuple(config.get('data', 'representation', 'note_range')),
         max_length=midi_config.get('max_length'),
-        resolution=midi_config.get('resolution')
+        resolution=midi_config.get('resolution'),
+        instrument_bins=config.get('data', 'representation', 'instrument_bins', default=16),
     )
 
     # Check if MIDI directory exists

@@ -11,7 +11,7 @@ import os
 class MIDIProcessor:
     """Process MIDI files for deep learning models."""
 
-    def __init__(self, note_range=(21, 108), max_length=512, resolution=480):
+    def __init__(self, note_range=(21, 108), max_length=512, resolution=480, instrument_bins=16):
         """
         Initialize MIDI processor.
 
@@ -23,7 +23,24 @@ class MIDIProcessor:
         self.note_range = note_range
         self.max_length = max_length
         self.resolution = resolution
+        self.instrument_bins = instrument_bins
         self.note_vocab_size = note_range[1] - note_range[0] + 1
+        self.vocab_size = self.note_vocab_size * self.instrument_bins
+
+    def _program_to_bin(self, program):
+        """Map 0..127 program numbers to a smaller instrument-bin vocabulary."""
+        return min(max(int(program), 0) // max(1, 128 // self.instrument_bins), self.instrument_bins - 1)
+
+    def _encode_token(self, note_idx, program):
+        return self._program_to_bin(program) * self.note_vocab_size + int(note_idx)
+
+    def decode_token(self, token):
+        """Decode token back to (note_idx, program)."""
+        token = int(token)
+        note_idx = token % self.note_vocab_size
+        instr_bin = token // self.note_vocab_size
+        program = int(instr_bin * (128 // self.instrument_bins))
+        return note_idx, min(program, 127)
 
     def midi_to_sequence(self, midi_path):
         """
@@ -38,47 +55,60 @@ class MIDIProcessor:
         try:
             midi = MidiFile(midi_path)
 
-            # Collect all note events
-            notes = []
-            durations = []
-            velocities = []
-            time_shifts = []
+            notes, durations, velocities, time_shifts, instruments = [], [], [], [], []
 
-            current_time = 0
-            active_notes = {}
-
+            # Parse tracks independently to avoid cross-track time corruption.
             for track in midi.tracks:
+                current_time = 0
+                current_program = 0
+                active_notes = {}
+
                 for msg in track:
                     current_time += msg.time
 
+                    if msg.type == 'program_change':
+                        current_program = int(msg.program)
+                        continue
+
                     if msg.type == 'note_on' and msg.velocity > 0:
-                        # Note start
                         if self.note_range[0] <= msg.note <= self.note_range[1]:
-                            active_notes[msg.note] = {
+                            key = (getattr(msg, 'channel', 0), msg.note)
+                            active_notes[key] = {
                                 'start_time': current_time,
-                                'velocity': msg.velocity
+                                'velocity': int(msg.velocity),
+                                'program': current_program,
                             }
 
                     elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-                        # Note end
-                        if msg.note in active_notes:
-                            note_info = active_notes.pop(msg.note)
-                            duration = current_time - note_info['start_time']
-
-                            # Store note information
-                            notes.append(msg.note - self.note_range[0])  # Normalize
-                            durations.append(min(duration, self.resolution * 4))  # Cap duration
-                            velocities.append(note_info['velocity'])
-                            time_shifts.append(note_info['start_time'])
+                        key = (getattr(msg, 'channel', 0), msg.note)
+                        if key in active_notes:
+                            note_info = active_notes.pop(key)
+                            duration = max(1, current_time - note_info['start_time'])
+                            notes.append(msg.note - self.note_range[0])
+                            durations.append(min(duration, self.resolution * 4))
+                            velocities.append(int(note_info['velocity']))
+                            time_shifts.append(int(note_info['start_time']))
+                            instruments.append(int(note_info['program']))
 
             if len(notes) == 0:
                 return None
 
+            order = np.argsort(time_shifts)
+            notes = np.array(notes, dtype=np.int32)[order]
+            durations = np.array(durations, dtype=np.int32)[order]
+            velocities = np.array(velocities, dtype=np.int32)[order]
+            time_shifts = np.array(time_shifts, dtype=np.int32)[order]
+            instruments = np.array(instruments, dtype=np.int32)[order]
+
+            tokens = np.array([self._encode_token(n, p) for n, p in zip(notes, instruments)], dtype=np.int32)
+
             return {
-                'notes': np.array(notes),
-                'durations': np.array(durations),
-                'velocities': np.array(velocities),
-                'time_shifts': np.array(time_shifts)
+                'notes': notes,
+                'durations': durations,
+                'velocities': velocities,
+                'time_shifts': time_shifts,
+                'instruments': instruments,
+                'tokens': tokens,
             }
 
         except Exception as e:
@@ -108,26 +138,41 @@ class MIDIProcessor:
         durations = sequence.get('durations', [self.resolution] * len(notes))
         velocities = sequence.get('velocities', [velocity] * len(notes))
         time_shifts = sequence.get('time_shifts', list(range(0, len(notes) * self.resolution, self.resolution)))
+        instruments = sequence.get('instruments', [0] * len(notes))
 
-        # Create note events
-        events = []
-        for i, (note, duration, vel, time_shift) in enumerate(zip(notes, durations, velocities, time_shifts)):
-            note = int(note + self.note_range[0])  # Denormalize
-            events.append(('note_on', int(time_shift), note, int(vel)))
-            events.append(('note_off', int(time_shift + duration), note, 0))
+        # Use one track per instrument program for richer accompaniment output.
+        instrument_tracks = {}
+        for note, duration, vel, time_shift, program in zip(notes, durations, velocities, time_shifts, instruments):
+            note = int(np.clip(int(note) + self.note_range[0], 0, 127))
+            duration = max(1, int(duration))
+            vel = int(np.clip(int(vel), 1, 127))
+            program = int(np.clip(int(program), 0, 127))
 
-        # Sort events by time
-        events.sort(key=lambda x: x[1])
+            if program not in instrument_tracks:
+                tr = MidiTrack()
+                midi.tracks.append(tr)
+                channel = program % 16
+                if channel == 9:
+                    channel = 8
+                tr.append(Message('program_change', channel=channel, program=program, time=0))
+                instrument_tracks[program] = {
+                    'track': tr,
+                    'channel': channel,
+                    'events': [],
+                }
 
-        # Convert to MIDI messages
-        last_time = 0
-        for event_type, time, note, vel in events:
-            delta_time = time - last_time
-            if event_type == 'note_on':
-                track.append(Message('note_on', note=note, velocity=vel, time=delta_time))
-            else:
-                track.append(Message('note_off', note=note, velocity=vel, time=delta_time))
-            last_time = time
+            instrument_tracks[program]['events'].append(('note_on', int(time_shift), note, vel))
+            instrument_tracks[program]['events'].append(('note_off', int(time_shift + duration), note, 0))
+
+        for data in instrument_tracks.values():
+            events = sorted(data['events'], key=lambda x: x[1])
+            last_time = 0
+            for event_type, time, note, vel in events:
+                delta_time = max(0, int(time - last_time))
+                data['track'].append(
+                    Message(event_type, channel=data['channel'], note=note, velocity=vel, time=delta_time)
+                )
+                last_time = time
 
         # Save MIDI file
         midi.save(output_path)
@@ -156,6 +201,10 @@ class MIDIProcessor:
                 'velocities': sequence['velocities'][i:i+seq_length],
                 'time_shifts': sequence['time_shifts'][i:i+seq_length]
             }
+            if 'instruments' in sequence:
+                seq_data['instruments'] = sequence['instruments'][i:i+seq_length]
+            if 'tokens' in sequence:
+                seq_data['tokens'] = sequence['tokens'][i:i+seq_length]
             sequences.append(seq_data)
 
         return sequences
@@ -185,7 +234,10 @@ class MIDIProcessor:
             sequence = self.midi_to_sequence(str(midi_file))
             if sequence is not None:
                 # Create training sequences
-                train_seqs = self.create_training_sequences(sequence)
+                train_seqs = self.create_training_sequences(
+                    sequence,
+                    seq_length=self.max_length
+                )
                 all_sequences.extend(train_seqs)
                 successful += 1
 
@@ -201,7 +253,9 @@ class MIDIProcessor:
                     'note_range': self.note_range,
                     'max_length': self.max_length,
                     'resolution': self.resolution,
-                    'vocab_size': self.note_vocab_size
+                    'vocab_size': self.vocab_size,
+                    'note_vocab_size': self.note_vocab_size,
+                    'instrument_bins': self.instrument_bins,
                 }
             }, f)
 
@@ -230,25 +284,31 @@ def prepare_training_data(sequences, vocab_size, seq_length=128):
     y = []
 
     for seq in sequences:
-        notes = seq['notes']
-        if len(notes) >= seq_length + 1:
-            X.append(notes[:seq_length])
-            y.append(notes[seq_length])
+        notes = np.asarray(seq.get('tokens', seq['notes']), dtype=np.int32)
+        if len(notes) < 2:
+            continue
 
-    X = np.array(X)
-    y = np.array(y)
+        current_seq_len = min(seq_length, len(notes) - 1)
+        input_notes = notes[:current_seq_len]
+        target_note = notes[current_seq_len]
 
-    # Convert to one-hot encoding
-    X_onehot = np.zeros((len(X), seq_length, vocab_size))
-    y_onehot = np.zeros((len(y), vocab_size))
+        if input_notes.shape[0] < seq_length:
+            padded = np.zeros(seq_length, dtype=np.int32)
+            padded[-input_notes.shape[0]:] = input_notes
+            input_notes = padded
 
-    for i, seq in enumerate(X):
-        for j, note in enumerate(seq):
-            if 0 <= note < vocab_size:
-                X_onehot[i, j, int(note)] = 1
+        if 0 <= target_note < vocab_size:
+            X.append(input_notes)
+            y.append(int(target_note))
 
-    for i, note in enumerate(y):
-        if 0 <= note < vocab_size:
-            y_onehot[i, int(note)] = 1
+    if not X:
+        raise ValueError(
+            "No training samples could be created from the processed sequences. "
+            "Try reducing `data.midi_processing.max_length` in config.yaml or "
+            "regenerate processed data."
+        )
 
-    return X_onehot, y_onehot
+    X = np.asarray(X, dtype=np.int32)
+    y = np.asarray(y, dtype=np.int32)
+
+    return X, y
