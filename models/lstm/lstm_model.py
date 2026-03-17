@@ -63,17 +63,17 @@ class LSTMMusicGenerator:
                 recurrent_dropout=self.recurrent_dropout,
                 name=f"lstm_layer_{i+1}"
             )(x)
-            x = layers.BatchNormalization()(x)
+            x = layers.BatchNormalization(name=f"batch_norm_{i+1}")(x)
 
         # Attention Mechanism
-        x = AttentionLayer()(x)
+        x = AttentionLayer(name="attention_layer")(x)
         
         # Dense Layers
         for i, dense_u in enumerate(self.dense_units):
-            x = layers.Dense(dense_u, activation="relu", name=f"dense_{i+1}")(x)
-            x = layers.Dropout(self.dropout)(x)
+            x = layers.Dense(dense_u, activation="relu", name=f"dense_layer_{i+1}")(x)
+            x = layers.Dropout(self.dropout, name=f"dropout_{i+1}")(x)
 
-        outputs = layers.Dense(self.vocab_size, activation="softmax")(x)
+        outputs = layers.Dense(self.vocab_size, activation="softmax", name="output_layer")(x)
         
         model = models.Model(inputs=inputs, outputs=outputs)
         return model

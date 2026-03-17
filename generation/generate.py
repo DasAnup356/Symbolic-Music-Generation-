@@ -23,14 +23,17 @@ def load_model(model_type, model_path, vocab_size, seq_length, config):
     print(f"Loading {model_type.upper()} model from {model_path}...")
 
     if model_type == 'lstm':
-        lstm_cfg = config['models']['lstm']
+        # Resolve runtime profile to get actual architecture used during training
+        from train import resolve_runtime_profile
+        runtime = resolve_runtime_profile(config)
+        
         model = LSTMMusicGenerator(
             vocab_size=vocab_size,
-            seq_length=seq_length,
-            embedding_dim=lstm_cfg.get('embedding_dim', 512),
-            num_layers=lstm_cfg.get('layers', 4),
-            units=lstm_cfg.get('units', 512),
-            dense_units=tuple(lstm_cfg.get('dense_units', [1024, 512]))
+            seq_length=runtime['train_seq_length'],
+            embedding_dim=runtime.get('embedding_dim', 512),
+            num_layers=runtime.get('layers', 4),
+            units=runtime.get('units', 512),
+            dense_units=tuple(runtime.get('dense_units', [1024, 512]))
         )
         model.load_model(model_path)
     elif model_type == 'gru':
@@ -46,6 +49,47 @@ def load_model(model_type, model_path, vocab_size, seq_length, config):
         raise ValueError(f"Unknown model type: {model_type}")
 
     return model
+
+def pick_seed_sequences(data, seed_length, num_samples, vocab_size):
+    """Pick random seed sequences from training data."""
+    sequences = data['sequences']
+    indices = np.random.choice(len(sequences), size=num_samples, replace=True)
+    
+    seeds = []
+    for idx in indices:
+        seq = sequences[idx]
+        tokens = seq.get('tokens', seq.get('notes', []))
+        if len(tokens) >= seed_length:
+            seeds.append(tokens[:seed_length])
+        else:
+            # Pad if too short
+            padded = np.zeros(seed_length, dtype=np.int32)
+            padded[-len(tokens):] = tokens
+            seeds.append(padded)
+            
+    return np.array(seeds, dtype=np.int32)
+
+def generate_from_lstm_gru(model, seed_sequences, length, temperature, top_k, top_p, repetition_penalty):
+    """Generate sequences using LSTM or GRU model."""
+    print(f"Generating {len(seed_sequences)} sequences of length {length}...")
+    return model.generate_sequences(
+        seed_sequences=seed_sequences,
+        length=length,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty
+    )
+
+def generate_from_vae(model, num_samples, length):
+    """Generate sequences using VAE model (latent space sampling)."""
+    print(f"Generating {num_samples} sequences using VAE latent sampling...")
+    return model.generate_sequences(num_samples=num_samples, length=length)
+
+def generate_from_gan(model, num_samples, length):
+    """Generate sequences using GAN model."""
+    print(f"Generating {num_samples} sequences using GAN noise sampling...")
+    return model.generate_samples(num_samples=num_samples)
 
 def save_sequences_as_midi(sequences, output_dir, processor, config):
     """Save generated Performance tokens as MIDI files."""

@@ -184,7 +184,7 @@ class MIDIProcessor:
         midi.save(output_path)
 
     def create_training_sequences(self, sequence, seq_length=128, step=32):
-        tokens = sequence['tokens']
+        tokens = sequence.get('tokens', [])
         if len(tokens) <= seq_length:
             return []
             
@@ -202,7 +202,7 @@ class MIDIProcessor:
         for midi_file in tqdm(midi_files):
             seq = self.midi_to_sequence(str(midi_file))
             if seq:
-                all_sequences.extend(self.create_training_sequences(seq, seq_length=self.max_length))
+                all_sequences.extend(self.create_training_sequences(seq, seq_length=128)) # Using default or config
         
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, 'wb') as f:
@@ -237,7 +237,14 @@ def prepare_training_data(sequences, vocab_size, seq_length=128):
     y = []
 
     for seq in sequences:
-        notes = np.asarray(seq.get('tokens', seq['notes']), dtype=np.int32)
+        # Check for 'tokens' (new format) or 'notes' (legacy format)
+        if 'tokens' in seq:
+            notes = np.asarray(seq['tokens'], dtype=np.int32)
+        elif 'notes' in seq:
+            notes = np.asarray(seq['notes'], dtype=np.int32)
+        else:
+            continue
+            
         if len(notes) < 2:
             continue
 
