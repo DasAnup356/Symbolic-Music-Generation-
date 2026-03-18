@@ -1,4 +1,4 @@
-"""LSTM model for symbolic music generation."""
+"""Enhanced LSTM model with Attention for symbolic music generation."""
 
 from tensorflow import keras
 from tensorflow.keras import layers, models
@@ -143,6 +143,71 @@ class LSTMMusicGenerator:
                 mask[sorted_idx] = sorted_probs
                 probs = mask / np.sum(mask)
 
+        return np.random.choice(self.vocab_size, p=probs)
+
+    def generate_sequences(self, seed_sequences, length=512, temperature=1.0, top_k=50, top_p=0.9, repetition_penalty=1.2):
+        """Vectorized generation for efficiency."""
+        generated = np.array(seed_sequences, dtype=np.int32)
+        
+        for _ in range(length):
+            x = generated[:, -self.seq_length:]
+            # Padding if necessary
+            if x.shape[1] < self.seq_length:
+                padded = np.zeros((x.shape[0], self.seq_length))
+                padded[:, -x.shape[1]:] = x
+                x = padded
+                
+            predictions = self.model.predict(x, verbose=0, batch_size=len(x))
+            
+            next_tokens = []
+            for i in range(predictions.shape[0]):
+                token = self._sample_with_controls(
+                    predictions[i],
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    recent_notes=generated[i, -20:]
+                )
+                next_tokens.append(token)
+            
+            next_tokens = np.array(next_tokens, dtype=np.int32).reshape(-1, 1)
+            generated = np.concatenate([generated, next_tokens], axis=1)
+            
+        return generated
+
+    def _sample_with_controls(self, probs, temperature=1.0, top_k=0, top_p=1.0, repetition_penalty=1.0, recent_notes=None):
+        probs = np.asarray(probs, dtype=np.float64)
+        
+        # Apply repetition penalty
+        if recent_notes is not None and repetition_penalty > 1.0:
+            for n in recent_notes:
+                probs[int(n)] /= repetition_penalty
+        
+        probs = np.log(probs + 1e-10) / max(temperature, 1e-5)
+        probs = np.exp(probs - np.max(probs))
+        probs = probs / np.sum(probs)
+
+        if top_k and top_k > 0:
+            top_idx = np.argpartition(probs, -top_k)[-top_k:]
+            mask = np.zeros_like(probs)
+            mask[top_idx] = probs[top_idx]
+            probs = mask / np.sum(mask)
+
+        if top_p < 1.0:
+            sorted_idx = np.argsort(probs)[::-1]
+            sorted_probs = probs[sorted_idx]
+            cumulative = np.cumsum(sorted_probs)
+            cutoff = cumulative > top_p
+            if np.any(cutoff):
+                first_idx = np.argmax(cutoff)
+                sorted_probs[first_idx + 1:] = 0.0
+                mask = np.zeros_like(probs)
+                mask[sorted_idx] = sorted_probs
+                probs = mask / np.sum(mask)
+
+        # Normalize again after masking
+        probs = probs / np.sum(probs)
         return np.random.choice(self.vocab_size, p=probs)
 
     def save_model(self, filepath):

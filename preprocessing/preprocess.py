@@ -74,7 +74,7 @@ def preprocess_dataset(config, midi_dir=None, output_path=None, max_files=None):
     print("="*70)
 
     # Initialize processor
-    midi_config = config.get('data', 'midi_processing')
+    midi_cfg = config.get('data', 'midi_processing')
     processor = MIDIProcessor(
         note_range=tuple(config.get('data', 'representation', 'note_range')),
         max_length=midi_config.get('max_length'),
