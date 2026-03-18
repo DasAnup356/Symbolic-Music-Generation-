@@ -9,16 +9,11 @@ from tqdm import tqdm
 import os
 
 class MIDIProcessor:
-    """Process MIDI files for deep learning models."""
+    """Process MIDI files for deep learning models using Performance Encoding."""
 
     def __init__(self, note_range=(21, 108), max_length=512, resolution=480, instrument_bins=16):
         """
-        Initialize MIDI processor.
-
-        Args:
-            note_range: Tuple of (min_note, max_note) MIDI values
-            max_length: Maximum sequence length
-            resolution: MIDI ticks per quarter note
+        Initialize MIDI processor with Performance Encoding.
         """
         self.note_range = note_range
         self.max_length = max_length
@@ -43,15 +38,7 @@ class MIDIProcessor:
         return note_idx, min(program, 127)
 
     def midi_to_sequence(self, midi_path):
-        """
-        Convert MIDI file to sequence representation.
-
-        Args:
-            midi_path: Path to MIDI file
-
-        Returns:
-            Dictionary with 'notes', 'durations', 'velocities', 'time_shifts'
-        """
+        """Convert MIDI to a sequence of Performance tokens."""
         try:
             midi = MidiFile(midi_path)
 
@@ -115,16 +102,8 @@ class MIDIProcessor:
             print(f"Error processing {midi_path}: {e}")
             return None
 
-    def sequence_to_midi(self, sequence, output_path, tempo=120, velocity=80):
-        """
-        Convert sequence representation back to MIDI file.
-
-        Args:
-            sequence: Dictionary with note information
-            output_path: Path to save MIDI file
-            tempo: Tempo in BPM
-            velocity: Default velocity if not in sequence
-        """
+    def sequence_to_midi(self, sequence, output_path, tempo=120):
+        """Convert Performance tokens back to MIDI."""
         midi = MidiFile()
         track = MidiTrack()
         midi.tracks.append(track)
@@ -178,21 +157,10 @@ class MIDIProcessor:
         midi.save(output_path)
 
     def create_training_sequences(self, sequence, seq_length=128, step=32):
-        """
-        Create overlapping training sequences from a full sequence.
-
-        Args:
-            sequence: Dictionary with note information
-            seq_length: Length of each training sequence
-            step: Step size for sliding window
-
-        Returns:
-            List of training sequences
-        """
-        notes = sequence['notes']
-        if len(notes) < seq_length:
+        tokens = sequence.get('tokens', [])
+        if len(tokens) <= seq_length:
             return []
-
+            
         sequences = []
         for i in range(0, len(notes) - seq_length, step):
             seq_data = {
@@ -210,26 +178,11 @@ class MIDIProcessor:
         return sequences
 
     def process_dataset(self, midi_dir, output_path, max_files=None):
-        """
-        Process entire dataset of MIDI files.
-
-        Args:
-            midi_dir: Directory containing MIDI files
-            output_path: Path to save processed data
-            max_files: Maximum number of files to process
-
-        Returns:
-            Dictionary with processed sequences
-        """
         midi_files = list(Path(midi_dir).rglob("*.mid")) + list(Path(midi_dir).rglob("*.midi"))
-
-        if max_files:
-            midi_files = midi_files[:max_files]
-
+        if max_files: midi_files = midi_files[:max_files]
+        
         all_sequences = []
-        successful = 0
-
-        print(f"Processing {len(midi_files)} MIDI files...")
+        print(f"Processing {len(midi_files)} MIDI files with Performance Encoding...")
         for midi_file in tqdm(midi_files):
             sequence = self.midi_to_sequence(str(midi_file))
             if sequence is not None:
@@ -258,8 +211,6 @@ class MIDIProcessor:
                     'instrument_bins': self.instrument_bins,
                 }
             }, f)
-
-        print(f"Saved processed data to {output_path}")
         return all_sequences
 
     def load_processed_data(self, data_path):

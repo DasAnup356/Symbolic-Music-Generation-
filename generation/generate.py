@@ -23,7 +23,18 @@ def load_model(model_type, model_path, vocab_size, seq_length):
     print(f"Loading {model_type.upper()} model from {model_path}...")
 
     if model_type == 'lstm':
-        model = LSTMMusicGenerator(vocab_size, seq_length)
+        # Resolve runtime profile to get actual architecture used during training
+        from train import resolve_runtime_profile
+        runtime = resolve_runtime_profile(config)
+        
+        model = LSTMMusicGenerator(
+            vocab_size=vocab_size,
+            seq_length=runtime['train_seq_length'],
+            embedding_dim=runtime.get('embedding_dim', 512),
+            num_layers=runtime.get('layers', 4),
+            units=runtime.get('units', 512),
+            dense_units=tuple(runtime.get('dense_units', [1024, 512]))
+        )
         model.load_model(model_path)
     elif model_type == 'gru':
         model = GRUMusicGenerator(vocab_size, seq_length)
@@ -130,7 +141,6 @@ def generate_from_gan(model, num_samples, length):
 def save_sequences_as_midi(sequences, output_dir, processor, config):
     """Save generated sequences as MIDI files with decoded note+instrument tokens."""
     print(f"\nSaving {len(sequences)} MIDI files to {output_dir}...")
-
     os.makedirs(output_dir, exist_ok=True)
 
     tempo = config.get('generation', 'output', 'tempo')

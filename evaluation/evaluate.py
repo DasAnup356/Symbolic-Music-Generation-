@@ -123,7 +123,9 @@ def evaluate_generated_music(config, sequences_path=None, midi_dir=None):
         for midi_file in Path(midi_dir).glob("*.mid"):
             seq_data = processor.midi_to_sequence(str(midi_file))
             if seq_data is not None:
-                sequences.append(seq_data['notes'])
+                # Support both 'tokens' (new) and 'notes' (legacy)
+                tokens = seq_data.get('tokens', seq_data.get('notes', []))
+                sequences.append(tokens)
     else:
         raise ValueError("Either sequences_path or midi_dir must be provided")
 
