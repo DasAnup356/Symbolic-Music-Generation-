@@ -67,6 +67,8 @@ class MusicEvaluator:
         }
 
         for seq in sequences:
+            if len(seq) == 0:
+                continue
             results['note_density'].append(self.note_density(seq))
             results['pitch_range'].append(self.pitch_range(seq))
             results['pitch_class_entropy'].append(self.pitch_class_entropy(seq))
@@ -74,6 +76,9 @@ class MusicEvaluator:
 
         # Compute statistics
         stats = {}
+        if not results['sequence_length']:
+            print("Warning: No non-empty sequences found for evaluation.")
+            return {}
         for metric, values in results.items():
             stats[metric] = {
                 'mean': np.mean(values),

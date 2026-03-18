@@ -115,7 +115,7 @@ class MIDIProcessor:
         # Add notes
         notes = sequence.get('notes', [])
         durations = sequence.get('durations', [self.resolution] * len(notes))
-        velocities = sequence.get('velocities', [velocity] * len(notes))
+        velocities = sequence.get('velocities', [80] * len(notes))
         time_shifts = sequence.get('time_shifts', list(range(0, len(notes) * self.resolution, self.resolution)))
         instruments = sequence.get('instruments', [0] * len(notes))
 
@@ -162,9 +162,9 @@ class MIDIProcessor:
             return []
             
         sequences = []
-        for i in range(0, len(notes) - seq_length, step):
+        for i in range(0, len(tokens) - seq_length, step):
             seq_data = {
-                'notes': notes[i:i+seq_length],
+                'notes': tokens[i:i+seq_length],
                 'durations': sequence['durations'][i:i+seq_length],
                 'velocities': sequence['velocities'][i:i+seq_length],
                 'time_shifts': sequence['time_shifts'][i:i+seq_length]
@@ -182,6 +182,7 @@ class MIDIProcessor:
         if max_files: midi_files = midi_files[:max_files]
         
         all_sequences = []
+        successful = 0
         print(f"Processing {len(midi_files)} MIDI files with Performance Encoding...")
         for midi_file in tqdm(midi_files):
             sequence = self.midi_to_sequence(str(midi_file))

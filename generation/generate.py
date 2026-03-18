@@ -18,7 +18,7 @@ from models.vae.vae_model import VAEMusicGenerator
 from models.gan.gan_model import GANMusicGenerator
 
 
-def load_model(model_type, model_path, vocab_size, seq_length):
+def load_model(model_type, model_path, vocab_size, seq_length, config):
     """Load trained model."""
     print(f"Loading {model_type.upper()} model from {model_path}...")
 
@@ -176,7 +176,7 @@ def save_sequences_as_midi(sequences, output_dir, processor, config):
         }
 
         output_path = os.path.join(output_dir, f"generated_{i:04d}.mid")
-        processor.sequence_to_midi(seq_data, output_path, tempo=tempo, velocity=default_velocity)
+        processor.sequence_to_midi(seq_data, output_path, tempo=tempo)
 
     print(f"✓ Saved {len(sequences)} MIDI files")
 
@@ -197,7 +197,7 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
     print(f"Vocabulary size: {vocab_size}")
     print(f"Seed length: {seq_length}")
 
-    model = load_model(model_type, model_path, vocab_size, seq_length)
+    model = load_model(model_type, model_path, vocab_size, seq_length, config)
 
     if num_samples is None:
         num_samples = config.get('generation', 'num_samples')

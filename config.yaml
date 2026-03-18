@@ -24,6 +24,14 @@ data:
     time_shift_bins: 100
     instrument_bins: 16
 
+  # Data Representation
+  representation:
+    note_range: [21, 108]
+    instrument_bins: 16
+    velocity_bins: 32
+    duration_bins: 16
+    time_shift_bins: 100
+
 # Model Architectures
 models:
   lstm:
@@ -36,23 +44,6 @@ models:
     dense_units: [512, 256]
     activation: "tanh"
 
-# Training Configuration
-training:
-  batch_size: 64
-  epochs: 100
-  learning_rate: 0.0005 # Lower learning rate for deeper network
-  optimizer: "adam"
-
-  gpu_optimized:
-    enabled: true
-    epochs: 100
-    batch_size: 64
-    train_seq_length: 512
-    layers: 4
-    units: 512
-    embedding_dim: 512
-
-  # GRU Configuration
   gru:
     name: "GRU_MusicGen"
     layers: 3
@@ -63,7 +54,6 @@ training:
     activation: "tanh"
     return_sequences: true
 
-  # CNN Configuration
   cnn:
     name: "CNN_MusicGen"
     conv_layers: 4
@@ -72,7 +62,6 @@ training:
     pool_sizes: [2, 2, 2, 2]
     dropout: 0.3
 
-  # VAE Configuration
   vae:
     name: "VAE_MusicGen"
     latent_dim: 256
@@ -80,7 +69,6 @@ training:
     decoder_layers: [256, 512]
     beta: 1.0  # KL divergence weight
 
-  # RBM/CRBM Configuration
   rbm:
     name: "RBM_MusicGen"
     n_hidden: 512
@@ -95,7 +83,6 @@ training:
     n_visible_temporal: 100
     learning_rate: 0.01
 
-  # GAN Configuration
   gan:
     name: "GAN_MusicGen"
     generator:
@@ -112,7 +99,7 @@ training:
 training:
   batch_size: 64
   epochs: 100
-  learning_rate: 0.001
+  learning_rate: 0.0005 # Lower learning rate for deeper network
   optimizer: "adam"
   loss_function: "categorical_crossentropy"
 
@@ -136,10 +123,10 @@ training:
 
   # Target metrics
   target_metrics:
-    validation_accuracy: 0.80  # strict next-note exact-match target (hard on diverse datasets)
-    validation_top5_accuracy: 0.80  # practical target for symbolic generation quality
+    validation_accuracy: 0.80
+    validation_top5_accuracy: 0.80
 
-  # CPU-friendly fallback profile (used automatically when no accelerator is detected)
+  # CPU-friendly fallback profile
   cpu_optimized:
     enabled: true
     max_files: 200
@@ -154,7 +141,7 @@ training:
     train_seq_length: 128
     generation_samples: 16
 
-  # GPU profile (used automatically when CUDA GPU is available)
+  # GPU profile
   gpu_optimized:
     enabled: true
     epochs: 50
@@ -165,7 +152,7 @@ training:
     embedding_dim: 320
     dense_units: [768, 384]
 
-  # TPU profile (used automatically when TPU runtime is available)
+  # TPU profile
   tpu_optimized:
     enabled: true
     epochs: 40
@@ -183,7 +170,7 @@ generation:
   top_k: 50
   top_p: 0.9
   repetition_penalty: 1.15
-  num_samples: 100  # default generation count (reduced for practical runtime)
+  num_samples: 100
   sequence_length: 512
   seed_length: 128
 
