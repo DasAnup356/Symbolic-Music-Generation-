@@ -11,31 +11,21 @@ data:
   raw_dir: "data/raw"
   processed_dir: "data/processed"
   midi_dir: "data/midi_files"
-  dataset_size: 10000  # Target: 10K MIDI files
-  train_split: 0.8
+  dataset_size: 10000
+  train_split: 0.85
   val_split: 0.1
-  test_split: 0.1
+  test_split: 0.05
 
-  # MIDI Processing
+  # MIDI Processing (High performance settings)
   midi_processing:
-    sample_rate: 44100
-    resolution: 480  # ticks per quarter note
-    max_length: 512  # maximum sequence length
-    min_length: 32   # minimum sequence length
-    quantize: true
-    tempo: 120
-
-  # Note representation
-  representation:
-    note_range: [21, 108]  # MIDI note range (A0 to C8)
+    resolution: 480
+    max_length: 1024  # Increased for better long-term structure
     velocity_bins: 32
-    duration_bins: 16
     time_shift_bins: 100
     instrument_bins: 16
 
 # Model Architectures
 models:
-  # LSTM Configuration
   lstm:
     name: "LSTM_MusicGen"
     layers: 3
@@ -45,8 +35,22 @@ models:
     recurrent_dropout: 0.2
     dense_units: [512, 256]
     activation: "tanh"
-    return_sequences: true
-    bidirectional: false
+
+# Training Configuration
+training:
+  batch_size: 64
+  epochs: 100
+  learning_rate: 0.0005 # Lower learning rate for deeper network
+  optimizer: "adam"
+
+  gpu_optimized:
+    enabled: true
+    epochs: 100
+    batch_size: 64
+    train_seq_length: 512
+    layers: 4
+    units: 512
+    embedding_dim: 512
 
   # GRU Configuration
   gru:

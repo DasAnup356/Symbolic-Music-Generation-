@@ -1,4 +1,4 @@
-"""LSTM model for symbolic music generation."""
+"""Enhanced LSTM model with Attention for symbolic music generation."""
 
 from tensorflow import keras
 from tensorflow.keras import layers, models
