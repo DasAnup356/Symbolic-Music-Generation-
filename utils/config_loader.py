@@ -21,10 +21,18 @@ class Config:
         """Get nested configuration value."""
         value = self.config
         for key in keys:
-            if isinstance(value, dict):
-                value = value.get(key, default)
+            if isinstance(value, dict) and key in value:
+                value = value[key]
             else:
                 return default
+        return value
+
+    def require(self, *keys):
+        """Get nested configuration value and raise a clear error if missing."""
+        value = self.get(*keys, default=None)
+        if value is None:
+            path = '.'.join(str(key) for key in keys)
+            raise KeyError(f"Missing required config key: {path}")
         return value
 
     def __getitem__(self, key):
@@ -39,6 +47,6 @@ _config = None
 def get_config(config_path="config.yaml"):
     """Get global configuration instance."""
     global _config
-    if _config is None:
+    if _config is None or os.path.abspath(_config.config_path) != os.path.abspath(config_path):
         _config = Config(config_path)
     return _config

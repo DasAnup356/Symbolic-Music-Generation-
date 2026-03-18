@@ -224,10 +224,16 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
     elif model_type == 'gan':
         sequences = generate_from_gan(model, num_samples, length)
 
+    representation_config = config.require('data', 'representation')
+    midi_processing_config = config.require('data', 'midi_processing')
+    note_range = representation_config.get('note_range', [21, 108])
+    if note_range is None:
+        raise ValueError("Config key `data.representation.note_range` must be defined.")
+
     processor = MIDIProcessor(
-        note_range=tuple(config.get('data', 'representation', 'note_range')),
-        resolution=config.get('data', 'midi_processing', 'resolution'),
-        instrument_bins=config.get('data', 'representation', 'instrument_bins', default=16),
+        note_range=tuple(note_range),
+        resolution=midi_processing_config.get('resolution', 480),
+        instrument_bins=representation_config.get('instrument_bins', 16),
     )
 
     if output_dir is None:

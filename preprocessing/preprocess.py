@@ -74,12 +74,17 @@ def preprocess_dataset(config, midi_dir=None, output_path=None, max_files=None):
     print("="*70)
 
     # Initialize processor
-    midi_cfg = config.get('data', 'midi_processing')
+    midi_config = config.require('data', 'midi_processing')
+    representation_config = config.require('data', 'representation')
+    note_range = representation_config.get('note_range', [21, 108])
+    if note_range is None:
+        raise ValueError("Config key `data.representation.note_range` must be defined.")
+
     processor = MIDIProcessor(
-        note_range=tuple(config.get('data', 'representation', 'note_range')),
-        max_length=midi_config.get('max_length'),
-        resolution=midi_config.get('resolution'),
-        instrument_bins=config.get('data', 'representation', 'instrument_bins', default=16),
+        note_range=tuple(note_range),
+        max_length=midi_config.get('max_length', 512),
+        resolution=midi_config.get('resolution', 480),
+        instrument_bins=representation_config.get('instrument_bins', 16),
     )
 
     # Check if MIDI directory exists
