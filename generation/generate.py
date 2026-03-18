@@ -18,8 +18,8 @@ from models.vae.vae_model import VAEMusicGenerator
 from models.gan.gan_model import GANMusicGenerator
 
 
-def load_model(model_type, model_path, vocab_size, seq_length, config):
-    """Load trained model with correct architecture parameters."""
+def load_model(model_type, model_path, vocab_size, seq_length):
+    """Load trained model."""
     print(f"Loading {model_type.upper()} model from {model_path}...")
 
     if model_type == 'lstm':
@@ -50,58 +50,136 @@ def load_model(model_type, model_path, vocab_size, seq_length, config):
 
     return model
 
-def pick_seed_sequences(data, seed_length, num_samples, vocab_size):
-    """Pick random seed sequences from training data."""
-    sequences = data['sequences']
-    indices = np.random.choice(len(sequences), size=num_samples, replace=True)
-    
-    seeds = []
-    for idx in indices:
-        seq = sequences[idx]
-        tokens = seq.get('tokens', seq.get('notes', []))
-        if len(tokens) >= seed_length:
-            seeds.append(tokens[:seed_length])
-        else:
-            # Pad if too short
-            padded = np.zeros(seed_length, dtype=np.int32)
-            padded[-len(tokens):] = tokens
-            seeds.append(padded)
-            
-    return np.array(seeds, dtype=np.int32)
+
+def pick_seed_sequences(processed_data, seq_length, num_samples, vocab_size):
+    """Prefer real seed patterns from training data over random tokens."""
+    sequences = processed_data.get('sequences', [])
+    if sequences:
+        seeds = []
+        for _ in range(num_samples):
+            seq_dict = sequences[np.random.randint(0, len(sequences))]
+            seq = seq_dict.get('tokens', seq_dict['notes'])
+            seq = np.asarray(seq, dtype=np.int32)
+            if len(seq) >= seq_length:
+                start = np.random.randint(0, len(seq) - seq_length + 1)
+                seed = seq[start:start + seq_length]
+            else:
+                seed = np.zeros(seq_length, dtype=np.int32)
+                seed[-len(seq):] = seq
+            seeds.append(seed)
+        return np.asarray(seeds, dtype=np.int32)
+
+    return np.random.randint(0, vocab_size, size=(num_samples, seq_length), dtype=np.int32)
+
 
 def generate_from_lstm_gru(model, seed_sequences, length, temperature, top_k, top_p, repetition_penalty):
-    """Generate sequences using LSTM or GRU model."""
-    print(f"Generating {len(seed_sequences)} sequences of length {length}...")
-    return model.generate_sequences(
-        seed_sequences=seed_sequences,
-        length=length,
-        temperature=temperature,
-        top_k=top_k,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty
-    )
+    """Generate sequences from LSTM/GRU model (batched when supported)."""
+    num_samples = len(seed_sequences)
+    print(f"Generating {num_samples} sequences...")
+
+    if hasattr(model, 'generate_sequences'):
+        sig = inspect.signature(model.generate_sequences)
+        kwargs = {'seed_sequences': seed_sequences, 'length': length, 'temperature': temperature}
+        if 'top_k' in sig.parameters:
+            kwargs['top_k'] = top_k
+        if 'top_p' in sig.parameters:
+            kwargs['top_p'] = top_p
+        if 'repetition_penalty' in sig.parameters:
+            kwargs['repetition_penalty'] = repetition_penalty
+
+        generated = model.generate_sequences(**kwargs)
+        return [generated[i] for i in range(generated.shape[0])]
+
+    generated_sequences = []
+    for seed in tqdm(seed_sequences):
+        sig = inspect.signature(model.generate_sequence)
+        kwargs = {'seed_sequence': seed, 'length': length, 'temperature': temperature}
+        if 'top_k' in sig.parameters:
+            kwargs['top_k'] = top_k
+        if 'top_p' in sig.parameters:
+            kwargs['top_p'] = top_p
+        if 'repetition_penalty' in sig.parameters:
+            kwargs['repetition_penalty'] = repetition_penalty
+
+        sequence = model.generate_sequence(**kwargs)
+        generated_sequences.append(sequence)
+
+    return generated_sequences
+
 
 def generate_from_vae(model, num_samples, length):
-    """Generate sequences using VAE model (latent space sampling)."""
-    print(f"Generating {num_samples} sequences using VAE latent sampling...")
-    return model.generate_sequences(num_samples=num_samples, length=length)
+    """Generate sequences from VAE model."""
+    print(f"Generating {num_samples} sequences from latent space...")
+
+    generated_sequences = []
+    for _ in tqdm(range(num_samples)):
+        z = np.random.normal(0, 1, (1, model.latent_dim))
+        generated = model.decode(z)
+        sequence = np.argmax(generated[0], axis=-1)
+        generated_sequences.append(sequence)
+
+    return generated_sequences
+
 
 def generate_from_gan(model, num_samples, length):
-    """Generate sequences using GAN model."""
-    print(f"Generating {num_samples} sequences using GAN noise sampling...")
-    return model.generate_samples(num_samples=num_samples)
+    """Generate sequences from GAN model."""
+    print(f"Generating {num_samples} sequences from GAN...")
+
+    batch_size = 32
+    generated_sequences = []
+
+    for i in tqdm(range(0, num_samples, batch_size)):
+        current_batch = min(batch_size, num_samples - i)
+        generated = model.generate(num_samples=current_batch)
+        for j in range(current_batch):
+            sequence = np.argmax(generated[j], axis=-1)
+            generated_sequences.append(sequence)
+
+    return generated_sequences
+
 
 def save_sequences_as_midi(sequences, output_dir, processor, config):
-    """Save generated Performance tokens as MIDI files."""
+    """Save generated sequences as MIDI files with decoded note+instrument tokens."""
     print(f"\nSaving {len(sequences)} MIDI files to {output_dir}...")
     os.makedirs(output_dir, exist_ok=True)
-    tempo = config.get('generation', 'output', 'tempo', default=120)
+
+    tempo = config.get('generation', 'output', 'tempo')
+    default_velocity = config.get('generation', 'output', 'velocity')
+
+    duration_choices = np.array([
+        processor.resolution // 2,
+        processor.resolution,
+        processor.resolution * 2,
+        processor.resolution * 4,
+    ], dtype=np.int32)
+    duration_probs = np.array([0.20, 0.45, 0.25, 0.10], dtype=np.float64)
 
     for i, sequence in enumerate(tqdm(sequences)):
+        notes = []
+        instruments = []
+        for token in sequence:
+            note_idx, program = processor.decode_token(token)
+            notes.append(note_idx)
+            instruments.append(program)
+
+        durations = np.random.choice(duration_choices, size=len(notes), p=duration_probs)
+        velocities = np.random.randint(max(45, default_velocity - 20), min(127, default_velocity + 20), size=len(notes))
+        step_sizes = np.maximum(1, (durations * 0.75).astype(np.int32))
+        time_shifts = np.concatenate(([0], np.cumsum(step_sizes[:-1], dtype=np.int32))) if len(notes) else np.array([], dtype=np.int32)
+
+        seq_data = {
+            'notes': np.asarray(notes, dtype=np.int32),
+            'durations': np.asarray(durations, dtype=np.int32),
+            'velocities': np.asarray(velocities, dtype=np.int32),
+            'time_shifts': np.asarray(time_shifts, dtype=np.int32),
+            'instruments': np.asarray(instruments, dtype=np.int32),
+        }
+
         output_path = os.path.join(output_dir, f"generated_{i:04d}.mid")
-        processor.sequence_to_midi({'tokens': sequence}, output_path, tempo=tempo)
+        processor.sequence_to_midi(seq_data, output_path, tempo=tempo, velocity=default_velocity)
 
     print(f"✓ Saved {len(sequences)} MIDI files")
+
 
 def generate_music(config, model_type, model_path, num_samples=None, output_dir=None):
     """Generate music using trained model."""
@@ -114,26 +192,24 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
         data = pickle.load(f)
 
     vocab_size = data['config']['vocab_size']
-    # Use training sequence length for the model
-    train_seq_length = config.get('data', 'midi_processing', 'max_length')
+    seq_length = config.get('generation', 'seed_length')
 
     print(f"Vocabulary size: {vocab_size}")
-    print(f"Model sequence length: {train_seq_length}")
+    print(f"Seed length: {seq_length}")
 
-    model = load_model(model_type, model_path, vocab_size, train_seq_length, config)
+    model = load_model(model_type, model_path, vocab_size, seq_length)
 
     if num_samples is None:
         num_samples = config.get('generation', 'num_samples')
 
-    length = config.get('generation', 'sequence_length', default=512)
-    seed_length = config.get('generation', 'seed_length', default=64)
-    temperature = config.get('generation', 'temperature', default=1.0)
-    top_k = config.get('generation', 'top_k', default=50)
-    top_p = config.get('generation', 'top_p', default=0.9)
-    repetition_penalty = config.get('generation', 'repetition_penalty', default=1.2)
+    length = config.get('generation', 'sequence_length')
+    temperature = config.get('generation', 'temperature')
+    top_k = config.get('generation', 'top_k')
+    top_p = config.get('generation', 'top_p')
+    repetition_penalty = config.get('generation', 'repetition_penalty', default=1.1)
 
     if model_type in ['lstm', 'gru']:
-        seed_sequences = pick_seed_sequences(data, seed_length, num_samples, vocab_size)
+        seed_sequences = pick_seed_sequences(data, seq_length, num_samples, vocab_size)
         sequences = generate_from_lstm_gru(
             model,
             seed_sequences,
@@ -148,12 +224,10 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
     elif model_type == 'gan':
         sequences = generate_from_gan(model, num_samples, length)
 
-    midi_cfg = config.get('data', 'midi_processing')
     processor = MIDIProcessor(
-        resolution=midi_cfg.get('resolution', 480),
-        velocity_bins=midi_cfg.get('velocity_bins', 32),
-        time_shift_bins=midi_cfg.get('time_shift_bins', 100),
-        max_shift_ms=midi_cfg.get('max_shift_ms', 1000)
+        note_range=tuple(config.get('data', 'representation', 'note_range')),
+        resolution=config.get('data', 'midi_processing', 'resolution'),
+        instrument_bins=config.get('data', 'representation', 'instrument_bins', default=16),
     )
 
     if output_dir is None:
@@ -164,7 +238,12 @@ def generate_music(config, model_type, model_path, num_samples=None, output_dir=
     print("\n" + "=" * 70)
     print("Generation Complete!")
     print("=" * 70)
-    print(f"Generated {len(sequences)} sequences")
+    generated_lengths = [len(seq) for seq in sequences]
+    if generated_lengths:
+        print(f"Generated {len(sequences)} sequences")
+        print(f"Sequence lengths: min={min(generated_lengths)}, max={max(generated_lengths)}, mean={np.mean(generated_lengths):.1f}")
+    else:
+        print(f"Generated {len(sequences)} sequences")
     print(f"Output directory: {output_dir}")
     print("=" * 70)
 

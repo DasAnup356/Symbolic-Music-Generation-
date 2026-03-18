@@ -22,17 +22,18 @@ data:
     max_length: 1024  # Increased for better long-term structure
     velocity_bins: 32
     time_shift_bins: 100
-    max_shift_ms: 1000
+    instrument_bins: 16
 
 # Model Architectures
 models:
   lstm:
-    name: "Enhanced_LSTM_Attention"
-    layers: 4        # Deeper
-    units: 512       # Wider
-    embedding_dim: 512
+    name: "LSTM_MusicGen"
+    layers: 3
+    units: 512
+    embedding_dim: 256
     dropout: 0.3
-    dense_units: [1024, 512]
+    recurrent_dropout: 0.2
+    dense_units: [512, 256]
     activation: "tanh"
 
 # Training Configuration
@@ -183,8 +184,8 @@ generation:
   top_p: 0.9
   repetition_penalty: 1.15
   num_samples: 100  # default generation count (reduced for practical runtime)
-  sequence_length: 128
-  seed_length: 64
+  sequence_length: 512
+  seed_length: 128
 
   # Output format
   output:
