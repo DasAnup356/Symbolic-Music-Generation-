@@ -15,6 +15,8 @@ from models.lstm.lstm_model import LSTMMusicGenerator, create_callbacks
 from models.gru.gru_model import GRUMusicGenerator
 from models.vae.vae_model import VAEMusicGenerator
 from models.gan.gan_model import GANMusicGenerator
+from models.cnn.cnn_model import CNNMusicGenerator
+from models.rbm.rbm_model import RBMMusicGenerator, CRBMMusicGenerator
 
 
 def detect_accelerator():
@@ -269,9 +271,84 @@ def train_gan(config, data):
     return model, history
 
 
+def train_cnn(config, data):
+    """Train CNN model."""
+    print("\n" + "=" * 50)
+    print("Training CNN Model")
+    print("=" * 50)
+
+    (X_train, y_train), (X_val, y_val), (X_test, y_test), vocab_size = data
+    cnn_config = config['models']['cnn']
+
+    model = CNNMusicGenerator(
+        vocab_size=vocab_size,
+        seq_length=X_train.shape[1],
+        embedding_dim=cnn_config.get('embedding_dim', 128),
+        filters=cnn_config.get('filters', (64, 128, 256)),
+        kernel_sizes=cnn_config.get('kernel_sizes', (3, 3, 3)),
+        dropout=cnn_config.get('dropout', 0.3)
+    )
+
+    model.compile_model(learning_rate=config['training']['learning_rate'])
+
+    print("\nModel Architecture:")
+    model.summary()
+
+    checkpoint_path = os.path.join(config['paths']['checkpoints'], 'cnn_best.h5')
+    log_dir = os.path.join(config['paths']['logs'], 'cnn')
+    callbacks = create_callbacks(checkpoint_path, log_dir)
+
+    history = model.train(
+        X_train, y_train,
+        X_val, y_val,
+        epochs=config['training']['epochs'],
+        batch_size=config['training']['batch_size'],
+        callbacks=callbacks
+    )
+
+    test_metrics = model.model.evaluate(X_test, y_test, verbose=0, return_dict=True)
+    print(f"\nTest Accuracy: {test_metrics.get('accuracy', 0.0):.4f}")
+
+    final_path = os.path.join(config['paths']['models'], 'cnn', 'cnn_final.h5')
+    model.save_model(final_path)
+    return model, history
+
+
+def train_rbm(config, data):
+    """Train RBM model."""
+    print("\n" + "=" * 50)
+    print("Training RBM Model")
+    print("=" * 50)
+
+    (X_train, _), _, _, vocab_size = data
+    rbm_config = config['models']['rbm']
+
+    # Flatten data for RBM
+    X_train_flat = X_train.reshape(X_train.shape[0], -1)
+    # Simple binary encoding for RBM visible units
+    X_train_binary = (X_train_flat > 0).astype(float)
+
+    model = RBMMusicGenerator(
+        n_visible=X_train_binary.shape[1],
+        n_hidden=rbm_config.get('n_hidden', 512),
+        learning_rate=rbm_config.get('learning_rate', 0.01),
+        k=rbm_config.get('k', 1)
+    )
+
+    history = model.train(
+        X_train_binary,
+        n_epochs=rbm_config.get('n_epochs', 100),
+        batch_size=rbm_config.get('batch_size', 32)
+    )
+
+    final_path = os.path.join(config['paths']['models'], 'rbm', 'rbm_final.npz')
+    model.save_model(final_path)
+    return model, history
+
+
 def main():
     parser = argparse.ArgumentParser(description='Train music generation models')
-    parser.add_argument('--model', type=str, default='all', choices=['lstm', 'gru', 'vae', 'rbm', 'gan', 'all'])
+    parser.add_argument('--model', type=str, default='all', choices=['lstm', 'gru', 'vae', 'rbm', 'gan', 'cnn', 'all'])
     parser.add_argument('--data', type=str, default='data/processed/sequences.pkl')
     parser.add_argument('--config', type=str, default='config.yaml')
     args = parser.parse_args()
@@ -284,6 +361,8 @@ def main():
     os.makedirs(os.path.join(config['paths']['models'], 'gru'), exist_ok=True)
     os.makedirs(os.path.join(config['paths']['models'], 'vae'), exist_ok=True)
     os.makedirs(os.path.join(config['paths']['models'], 'gan'), exist_ok=True)
+    os.makedirs(os.path.join(config['paths']['models'], 'cnn'), exist_ok=True)
+    os.makedirs(os.path.join(config['paths']['models'], 'rbm'), exist_ok=True)
 
     runtime = resolve_runtime_profile(config)
     print(f"Detected accelerator: {runtime['device'].upper()}")
@@ -298,6 +377,10 @@ def main():
         train_vae(config, data)
     if args.model in ['gan', 'all']:
         train_gan(config, data)
+    if args.model in ['cnn', 'all']:
+        train_cnn(config, data)
+    if args.model in ['rbm', 'all']:
+        train_rbm(config, data)
 
     print("\n" + "=" * 50)
     print("Training Complete!")

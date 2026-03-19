@@ -10,9 +10,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.config_loader import get_config
 from preprocessing.preprocess import preprocess_dataset
-from train import train_lstm, load_data, resolve_runtime_profile
+from train import train_lstm, train_gru, train_vae, train_gan, train_cnn, train_rbm, load_data, resolve_runtime_profile
 from generation.generate import generate_music
 from evaluation.evaluate import evaluate_generated_music
+from rag.tutor import setup_tutor, ask_tutor
 
 
 def resolve_pipeline_runtime(config):
@@ -70,13 +71,26 @@ def run_pipeline(config, steps=['all']):
         data_path = os.path.join(config.get('data', 'processed_dir'), 'sequences.pkl')
         data = load_data(data_path, config, seq_length=runtime['train_seq_length'])
 
-        # Train LSTM model
-        model, history = train_lstm(config, data)
+        # Train models based on config or all
+        target_model = config.get('training', 'model', default='lstm')
 
-        print("Model trained successfully")
-        print(f"Best validation accuracy: {max(history.history['val_accuracy']):.4f}")
-        if 'val_top5_accuracy' in history.history:
-            print(f"Best validation top-5 accuracy: {max(history.history['val_top5_accuracy']):.4f}")
+        if target_model == 'lstm':
+            train_lstm(config, data)
+        elif target_model == 'gru':
+            train_gru(config, data)
+        elif target_model == 'vae':
+            train_vae(config, data)
+        elif target_model == 'gan':
+            train_gan(config, data)
+        elif target_model == 'cnn':
+            train_cnn(config, data)
+        elif target_model == 'rbm':
+            train_rbm(config, data)
+        else:
+            # Default to LSTM
+            train_lstm(config, data)
+
+        print("Model training complete")
 
     # Step 3: Generation
     if 'all' in steps or 'generate' in steps:
@@ -116,6 +130,22 @@ def run_pipeline(config, steps=['all']):
     print(f"Total execution time: {elapsed_time/60:.2f} minutes")
     print("="*80)
 
+def run_tutor(query):
+    """Run the AI Tutor with a specific query."""
+    try:
+        tutor = setup_tutor()
+        answer = ask_tutor(query, tutor)
+        print("\n" + "="*80)
+        print("JULES - AI TUTOR")
+        print("="*80)
+        print(f"QUESTION: {query}")
+        print("-" * 80)
+        print(answer)
+        print("="*80)
+    except Exception as e:
+        print(f"Error starting tutor: {e}")
+        print("Tip: Make sure to run 'python rag/indexer.py' first to build the knowledge base.")
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
@@ -134,8 +164,17 @@ def main():
         default='config.yaml',
         help='Path to configuration file'
     )
+    parser.add_argument(
+        '--tutor',
+        type=str,
+        help='Ask the AI Tutor a question about the project'
+    )
 
     args = parser.parse_args()
+
+    if args.tutor:
+        run_tutor(args.tutor)
+        return
 
     # Load configuration
     config = get_config(args.config)
